@@ -5,17 +5,11 @@ import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
-"""
-output json:
-[
-  {
-    "category": "string",
-    "title": "string",
-    "text": "string" 
-  },
-]
-"""
+
 def scrape(url: str):
+    """
+    output JSON: [{"category": "string", "title": "string", "text": "string"}]
+    """
     html = requests.get(url).text
     soup = BeautifulSoup(html, "html.parser")
     categories_list = soup.select_one("#categories-4 ul")
