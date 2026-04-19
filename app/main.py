@@ -26,4 +26,4 @@ app.add_api_websocket_route("/ws/chat", websocket.websocket_chat)
 @app.get("/health")
 async def health():
     from app.services.rag import store
-    return {"status": "healthy", "articles_in_store": store.size}
+    return {"status": "healthy", "articles_in_store": store.count()}
