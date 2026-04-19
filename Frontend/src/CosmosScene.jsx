@@ -448,9 +448,10 @@ export default function CosmosScene({ busy, speed = 1 }) {
 
     const earthEntry = planets.find(p => p.earth)
 
-    // ----- Galactus loaded as Sun at center -----
+    // ----- Galactus loaded as Sun at center + floater template -----
     let galactus = null
     let galactusBaseScale = 1
+    let galactusTemplate = null // pre-shader clone used for floating junk
 
     const gltfLoader = new GLTFLoader()
     gltfLoader.setMeshoptDecoder(MeshoptDecoder)
@@ -464,18 +465,26 @@ export default function CosmosScene({ busy, speed = 1 }) {
         galactus.position.sub(center)
         const maxDim = Math.max(size.x, size.y, size.z) || 1
         galactusBaseScale = (SUN_RADIUS * 2) / maxDim
+
+        // Clone BEFORE material override — floaters keep original look.
+        // scene.clone(true) shares geometries + material refs, so don't dispose originals.
+        galactusTemplate = galactus.clone(true)
+        galactusTemplate.scale.setScalar(1)
+        galactusTemplate.position.set(0, 0, 0)
+        const tbox = new THREE.Box3().setFromObject(galactusTemplate)
+        const tsize = tbox.getSize(new THREE.Vector3())
+        floaterBaseRadius = Math.max(tsize.x, tsize.y, tsize.z) * 0.5
+
         galactus.scale.setScalar(galactusBaseScale)
         galactus.traverse((obj) => {
           if (obj.isMesh) {
-            const old = Array.isArray(obj.material) ? obj.material : [obj.material]
-            old.forEach(m => m?.dispose?.())
             obj.material = sunShader
           }
         })
         galactus.rotation.y = -Math.PI / 2
         sun.add(galactus)
         // eslint-disable-next-line no-console
-        console.log('[cosmos] galactus.glb loaded as sun', { size, scale: galactusBaseScale })
+        console.log('[cosmos] galactus.glb loaded (sun + floater template)', { size, scale: galactusBaseScale })
       },
       undefined,
       (err) => {
@@ -483,6 +492,83 @@ export default function CosmosScene({ busy, speed = 1 }) {
         console.warn('[cosmos] galactus.glb failed to load', err)
       }
     )
+
+    // ----- Floating galactus junk (max 3 on scene) -----
+    const floaters = []
+    const MAX_FLOATERS = 3
+    let floaterT = 0
+    let floaterBaseRadius = 1.5 // refined when template loads
+    const FLOATER_SPAWN_INTERVAL = 5
+    const floaterFrustum = new THREE.Frustum()
+    const floaterFrustumMat = new THREE.Matrix4()
+    const floaterSphere = new THREE.Sphere()
+
+    // Shared opaque white material — original GLB materials rendered transparent red, unreadable.
+    const floaterMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.55,
+      metalness: 0.15,
+      emissive: 0x2a2a36,
+      emissiveIntensity: 0.35,
+      transparent: false,
+      opacity: 1
+    })
+
+    const spawnFloater = () => {
+      if (!galactusTemplate) return
+      if (floaters.length >= MAX_FLOATERS) return
+      const clone = galactusTemplate.clone(true)
+      clone.traverse((obj) => {
+        if (obj.isMesh) obj.material = floaterMat
+      })
+      const BOUND = 140
+      const side = Math.floor(Math.random() * 4)
+      const start = new THREE.Vector3()
+      const dir = new THREE.Vector3()
+      const y = (Math.random() - 0.5) * 80
+      const zBias = (Math.random() - 0.5) * 60 - 20
+      if (side === 0) {        // enter from left
+        start.set(-BOUND, y, zBias); dir.set(1, 0, 0)
+      } else if (side === 1) { // right
+        start.set(BOUND, y, zBias); dir.set(-1, 0, 0)
+      } else if (side === 2) { // top
+        start.set((Math.random() - 0.5) * BOUND, BOUND * 0.6, zBias); dir.set(0, -1, 0)
+      } else {                 // bottom
+        start.set((Math.random() - 0.5) * BOUND, -BOUND * 0.6, zBias); dir.set(0, 1, 0)
+      }
+      dir.x += (Math.random() - 0.5) * 0.4
+      dir.y += (Math.random() - 0.5) * 0.4
+      dir.z += (Math.random() - 0.5) * 0.3
+      dir.normalize()
+      clone.position.copy(start)
+      const sc = 2.2 + Math.random() * 2.2
+      clone.scale.setScalar(sc)
+      clone.rotation.set(
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI * 2
+      )
+      scene.add(clone)
+      floaters.push({
+        mesh: clone,
+        dir,
+        speed: 2.5 + Math.random() * 2.5,
+        tumble: new THREE.Vector3(
+          (Math.random() - 0.5) * 0.6,
+          (Math.random() - 0.5) * 0.6,
+          (Math.random() - 0.5) * 0.6
+        ),
+        radius: floaterBaseRadius * sc,
+        hasEntered: false
+      })
+      // eslint-disable-next-line no-console
+      console.log('[cosmos] spawnFloater, total =', floaters.length)
+    }
+
+    const removeFloater = (f) => {
+      scene.remove(f.mesh)
+      // geometries/materials shared w/ template — do not dispose per floater
+    }
 
     // ----- Meteors + Rockets + Explosions -----
     const meteors = []
@@ -671,6 +757,57 @@ export default function CosmosScene({ busy, speed = 1 }) {
       rocketT += dt
       if (rocketT > 2.2) { spawnRocket(); rocketT = 0 }
 
+      // ----- Floater spawn + drift -----
+      floaterT += dt
+      if (floaterT > FLOATER_SPAWN_INTERVAL) {
+        floaterT = 0
+        spawnFloater()
+      }
+
+      // Build view frustum once per frame for visibility check.
+      camera.updateMatrixWorld()
+      floaterFrustumMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+      floaterFrustum.setFromProjectionMatrix(floaterFrustumMat)
+
+      for (let i = floaters.length - 1; i >= 0; i--) {
+        const f = floaters[i]
+        const mv = Math.max(speedMul, 0.35) * dt * f.speed
+        f.mesh.position.addScaledVector(f.dir, mv)
+        f.mesh.rotation.x += f.tumble.x * dt
+        f.mesh.rotation.y += f.tumble.y * dt
+        f.mesh.rotation.z += f.tumble.z * dt
+
+        // Planet collision → explode
+        let collided = false
+        for (let j = 0; j < planets.length; j++) {
+          const p = planets[j]
+          const d = f.mesh.position.distanceTo(p.mesh.position)
+          if (d < f.radius + p.r) {
+            spawnExplosion(f.mesh.position.clone(), 0xffffff, 55, 4.5)
+            spawnExplosion(p.mesh.position.clone(), 0xffc080, 35, 3.2)
+            collided = true
+            break
+          }
+        }
+        if (collided) {
+          removeFloater(f)
+          floaters.splice(i, 1)
+          continue
+        }
+
+        // Visibility: despawn once it exits camera frustum after having entered
+        floaterSphere.center.copy(f.mesh.position)
+        floaterSphere.radius = f.radius
+        const visible = floaterFrustum.intersectsSphere(floaterSphere)
+        if (visible) f.hasEntered = true
+        const pos = f.mesh.position
+        const outOfWorld = Math.abs(pos.x) > 260 || Math.abs(pos.y) > 200 || Math.abs(pos.z) > 260
+        if (outOfWorld || (f.hasEntered && !visible)) {
+          removeFloater(f)
+          floaters.splice(i, 1)
+        }
+      }
+
       const projDt = Math.max(speedMul, 0.5) * dt
       const updateProjectile = (p, getStart, getEnd, arc) => {
         p.progress += projDt * p.speed
@@ -770,6 +907,8 @@ export default function CosmosScene({ busy, speed = 1 }) {
       planets.forEach(p => { p.mesh.geometry.dispose(); p.mesh.material.dispose() })
       meteors.forEach(disposeProjectile)
       rockets.forEach(disposeProjectile)
+      floaters.forEach(removeFloater)
+      floaterMat.dispose()
       explosions.forEach(e => {
         scene.remove(e.pts)
         e.pts.geometry.dispose()
@@ -779,6 +918,14 @@ export default function CosmosScene({ busy, speed = 1 }) {
         galactus.traverse((obj) => {
           if (obj.isMesh) {
             obj.geometry?.dispose()
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+            mats.forEach(m => m?.dispose?.())
+          }
+        })
+      }
+      if (galactusTemplate) {
+        galactusTemplate.traverse((obj) => {
+          if (obj.isMesh) {
             const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
             mats.forEach(m => m?.dispose?.())
           }
