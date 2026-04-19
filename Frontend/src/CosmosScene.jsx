@@ -9,11 +9,18 @@ export default function CosmosScene({ busy, speed = 1 }) {
   const speedRef = useRef(speed)
 
   useEffect(() => { busyRef.current = busy }, [busy])
-  useEffect(() => { speedRef.current = speed }, [speed])
+  useEffect(() => {
+    speedRef.current = speed
+    // eslint-disable-next-line no-console
+    console.log('[cosmos] speed prop change →', speed)
+  }, [speed])
 
   useEffect(() => {
     const mount = mountRef.current
     if (!mount) return
+
+    // eslint-disable-next-line no-console
+    console.log('[cosmos] mount scene, initial speed =', speedRef.current)
 
     const scene = new THREE.Scene()
     scene.fog = new THREE.FogExp2(0x02030a, 0.0015)
@@ -134,16 +141,25 @@ export default function CosmosScene({ busy, speed = 1 }) {
       nebulae.push(s)
     }
 
-    // ----- Sun -----
-    const sunGeo = new THREE.SphereGeometry(6, 64, 64)
-    const sunMat = new THREE.ShaderMaterial({
+    // ----- Sun = Galactus (shines from center) -----
+    const SUN_RADIUS = 6
+    const sun = new THREE.Group()
+    scene.add(sun)
+
+    const sunLight = new THREE.PointLight(0xff8a40, 6, 600, 1.2)
+    scene.add(sunLight)
+    scene.add(new THREE.AmbientLight(0x223055, 0.4))
+
+    // Procedural sun ShaderMaterial — applied to galactus meshes so the model
+    // looks like a churning star instead of a flat yellow blob.
+    const sunShader = new THREE.ShaderMaterial({
       uniforms: { uTime: { value: 0 } },
       vertexShader: `
         varying vec3 vPos;
         varying vec3 vNormal;
         void main() {
           vPos = position;
-          vNormal = normal;
+          vNormal = normalize(normalMatrix * normal);
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
@@ -155,30 +171,38 @@ export default function CosmosScene({ busy, speed = 1 }) {
         float noise(vec3 p) {
           vec3 i = floor(p); vec3 f = fract(p);
           f = f * f * (3.0 - 2.0 * f);
-          float n = mix(mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x),
+          float n = mix(mix(mix(hash(i),              hash(i+vec3(1,0,0)), f.x),
                              mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
                          mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
                              mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
           return n;
         }
+        float fbm(vec3 p) {
+          float v = 0.0;
+          float a = 0.5;
+          for (int i = 0; i < 5; i++) {
+            v += a * noise(p);
+            p *= 2.05;
+            a *= 0.55;
+          }
+          return v;
+        }
         void main() {
-          float n = noise(vPos * 0.4 + vec3(uTime * 0.3));
-          n += 0.5 * noise(vPos * 1.2 + vec3(uTime * 0.6));
-          vec3 hot = vec3(1.0, 0.85, 0.4);
-          vec3 cold = vec3(1.0, 0.45, 0.1);
-          vec3 col = mix(cold, hot, n);
-          float rim = pow(1.0 - abs(dot(normalize(vNormal), vec3(0,0,1))), 2.0);
-          col += rim * vec3(1.0, 0.6, 0.3);
+          vec3 p = vPos * 0.35 + vec3(uTime * 0.35);
+          float n = fbm(p);
+          float n2 = fbm(p * 2.1 + vec3(uTime * 0.9));
+          float k = clamp(n * 0.6 + n2 * 0.5, 0.0, 1.0);
+          vec3 cold = vec3(0.85, 0.18, 0.02);
+          vec3 warm = vec3(1.0,  0.55, 0.12);
+          vec3 hot  = vec3(1.0,  0.95, 0.55);
+          vec3 col = mix(cold, warm, smoothstep(0.25, 0.65, k));
+          col = mix(col, hot, smoothstep(0.65, 0.95, k));
+          float rim = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 2.2);
+          col += rim * vec3(1.0, 0.5, 0.2);
           gl_FragColor = vec4(col, 1.0);
         }
       `
     })
-    const sun = new THREE.Mesh(sunGeo, sunMat)
-    scene.add(sun)
-
-    const sunLight = new THREE.PointLight(0xffd27a, 3, 500, 1.2)
-    scene.add(sunLight)
-    scene.add(new THREE.AmbientLight(0x223055, 0.4))
 
     // Corona sprite
     const coronaCanvas = document.createElement('canvas')
@@ -423,76 +447,10 @@ export default function CosmosScene({ busy, speed = 1 }) {
     })
 
     const earthEntry = planets.find(p => p.earth)
-    const earthBaseRadius = earthEntry ? earthEntry.r : 1.9
 
-    // ----- Galactus (devours Earth) -----
-    const galactusGroup = new THREE.Group()
-    scene.add(galactusGroup)
+    // ----- Galactus loaded as Sun at center -----
     let galactus = null
     let galactusBaseScale = 1
-    const galactusOffset = new THREE.Vector3(-9, 2.5, 0)
-
-    // Dramatic rim light on Galactus
-    const galactusLight = new THREE.PointLight(0xff6a2a, 2.2, 80, 1.5)
-    galactusGroup.add(galactusLight)
-
-    // Debris particles (Earth chunks sucked in)
-    const debrisCount = 180
-    const debrisGeo = new THREE.BufferGeometry()
-    const debrisPos = new Float32Array(debrisCount * 3)
-    const debrisLife = new Float32Array(debrisCount)
-    const debrisSpd = new Float32Array(debrisCount)
-    const debrisAng = new Float32Array(debrisCount * 2)
-    for (let i = 0; i < debrisCount; i++) {
-      debrisLife[i] = Math.random()
-      debrisSpd[i] = 0.4 + Math.random() * 0.9
-      debrisAng[i * 2] = Math.random() * Math.PI * 2
-      debrisAng[i * 2 + 1] = (Math.random() - 0.5) * Math.PI * 0.6
-    }
-    debrisGeo.setAttribute('position', new THREE.BufferAttribute(debrisPos, 3))
-    const debrisMat = new THREE.PointsMaterial({
-      color: 0xffb070,
-      size: 0.18,
-      transparent: true,
-      opacity: 0.9,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    })
-    const debris = new THREE.Points(debrisGeo, debrisMat)
-    scene.add(debris)
-
-    // Energy beam from Galactus mouth to Earth
-    const beamGeo = new THREE.CylinderGeometry(0.08, 0.8, 1, 16, 1, true)
-    beamGeo.translate(0, -0.5, 0)
-    const beamMat = new THREE.ShaderMaterial({
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      uniforms: { uTime: { value: 0 }, uIntensity: { value: 1 } },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float uTime;
-        uniform float uIntensity;
-        varying vec2 vUv;
-        void main() {
-          float pulse = 0.6 + 0.4 * sin(uTime * 8.0 - vUv.y * 12.0);
-          float edge = smoothstep(0.5, 0.0, abs(vUv.x - 0.5));
-          vec3 hot = mix(vec3(1.0, 0.3, 0.1), vec3(1.0, 0.9, 0.5), pulse);
-          float a = edge * pulse * uIntensity * (1.0 - vUv.y * 0.3);
-          gl_FragColor = vec4(hot, a);
-        }
-      `
-    })
-    const beam = new THREE.Mesh(beamGeo, beamMat)
-    beam.visible = false
-    scene.add(beam)
 
     const gltfLoader = new GLTFLoader()
     gltfLoader.setMeshoptDecoder(MeshoptDecoder)
@@ -500,29 +458,24 @@ export default function CosmosScene({ busy, speed = 1 }) {
       '/models/galactus.glb',
       (gltf) => {
         galactus = gltf.scene
-        // Compute bounding box and normalize scale
         const box = new THREE.Box3().setFromObject(galactus)
         const size = box.getSize(new THREE.Vector3())
         const center = box.getCenter(new THREE.Vector3())
-        galactus.position.sub(center) // recenter
+        galactus.position.sub(center)
         const maxDim = Math.max(size.x, size.y, size.z) || 1
-        galactusBaseScale = 12 / maxDim // ~12 units tall, towers over Earth (r=1.9)
+        galactusBaseScale = (SUN_RADIUS * 2) / maxDim
         galactus.scale.setScalar(galactusBaseScale)
-        // Face Earth (Earth sits to right of Galactus at offset)
-        galactus.rotation.y = -Math.PI / 2
         galactus.traverse((obj) => {
-          if (obj.isMesh && obj.material) {
-            const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
-            mats.forEach((m) => {
-              if (m.emissive) m.emissive = new THREE.Color(0x2a0a00)
-              if ('emissiveIntensity' in m) m.emissiveIntensity = 0.6
-              if ('metalness' in m) m.metalness = Math.min(1, (m.metalness ?? 0) + 0.2)
-            })
+          if (obj.isMesh) {
+            const old = Array.isArray(obj.material) ? obj.material : [obj.material]
+            old.forEach(m => m?.dispose?.())
+            obj.material = sunShader
           }
         })
-        galactusGroup.add(galactus)
+        galactus.rotation.y = -Math.PI / 2
+        sun.add(galactus)
         // eslint-disable-next-line no-console
-        console.log('[cosmos] galactus.glb loaded', { size, scale: galactusBaseScale })
+        console.log('[cosmos] galactus.glb loaded as sun', { size, scale: galactusBaseScale })
       },
       undefined,
       (err) => {
@@ -530,6 +483,102 @@ export default function CosmosScene({ busy, speed = 1 }) {
         console.warn('[cosmos] galactus.glb failed to load', err)
       }
     )
+
+    // ----- Meteors + Rockets + Explosions -----
+    const meteors = []
+    const rockets = []
+    const explosions = []
+    const TRAIL_LEN = 24
+
+    const makeProjectile = (color) => {
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.22, 12, 12),
+        new THREE.MeshBasicMaterial({ color })
+      )
+      const posArr = new Float32Array(TRAIL_LEN * 3)
+      const colArr = new Float32Array(TRAIL_LEN * 3)
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3))
+      geo.setAttribute('color', new THREE.BufferAttribute(colArr, 3))
+      const trail = new THREE.Line(geo, new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      }))
+      scene.add(head)
+      scene.add(trail)
+      return { head, trail, posArr, colArr, history: [] }
+    }
+
+    const disposeProjectile = (p) => {
+      scene.remove(p.head)
+      scene.remove(p.trail)
+      p.head.geometry.dispose(); p.head.material.dispose()
+      p.trail.geometry.dispose(); p.trail.material.dispose()
+    }
+
+    const spawnMeteor = () => {
+      if (planets.length === 0) return
+      const target = planets[Math.floor(Math.random() * planets.length)]
+      const proj = makeProjectile(0xffa060)
+      const from = new THREE.Vector3(
+        (Math.random() - 0.5) * 220,
+        70 + Math.random() * 60,
+        (Math.random() - 0.5) * 220
+      )
+      proj.head.position.copy(from)
+      meteors.push({ ...proj, from, target, progress: 0, speed: 0.35 + Math.random() * 0.45, rgb: [1.0, 0.55, 0.2] })
+      // eslint-disable-next-line no-console
+      console.log('[cosmos] spawnMeteor → target', target.name, 'total meteors =', meteors.length)
+    }
+
+    const spawnRocket = () => {
+      if (planets.length < 2) return
+      const a = Math.floor(Math.random() * planets.length)
+      let b = Math.floor(Math.random() * planets.length)
+      if (b === a) b = (b + 1) % planets.length
+      const src = planets[a]
+      const tgt = planets[b]
+      const proj = makeProjectile(0xb79cff)
+      proj.head.position.copy(src.mesh.position)
+      rockets.push({ ...proj, src, target: tgt, progress: 0, speed: 0.55 + Math.random() * 0.4, rgb: [0.72, 0.61, 1.0] })
+      // eslint-disable-next-line no-console
+      console.log('[cosmos] spawnRocket', src.name, '→', tgt.name, 'total rockets =', rockets.length)
+    }
+
+    const spawnExplosion = (pos, color, count = 30, spread = 3) => {
+      const arr = new Float32Array(count * 3)
+      const vel = []
+      for (let i = 0; i < count; i++) {
+        arr[i * 3] = pos.x
+        arr[i * 3 + 1] = pos.y
+        arr[i * 3 + 2] = pos.z
+        const v = new THREE.Vector3(
+          Math.random() - 0.5,
+          Math.random() - 0.5,
+          Math.random() - 0.5
+        ).normalize().multiplyScalar(1.5 + Math.random() * spread)
+        vel.push(v)
+      }
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(arr, 3))
+      const mat = new THREE.PointsMaterial({
+        color,
+        size: 0.4,
+        transparent: true,
+        opacity: 1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+      const pts = new THREE.Points(geo, mat)
+      scene.add(pts)
+      explosions.push({ pts, arr, vel, life: 0, max: 0.7 })
+    }
+
+    let meteorT = 0
+    let rocketT = 0
 
     // ----- Resize -----
     const onResize = () => {
@@ -550,20 +599,49 @@ export default function CosmosScene({ busy, speed = 1 }) {
     // ----- Animate -----
     const clock = new THREE.Clock()
     let raf = 0
-    // Eating cycle: 0..1 = approach+shrink, then respawn
-    const CYCLE_SEC = 14
-    let eatT = 0
-    const tmpEarthPos = new THREE.Vector3()
-    const tmpMouthPos = new THREE.Vector3()
-    const tmpDir = new THREE.Vector3()
+    let logAcc = 0
+    let frameCount = 0
+    let tickCount = 0
+    const watchdog = setInterval(() => {
+      // eslint-disable-next-line no-console
+      console.log('[cosmos] WATCHDOG tickCount=' + tickCount + ' speed=' + speedRef.current + ' planetsX0=' + (planets[0]?.mesh.position.x.toFixed(2)))
+    }, 2000)
+    // eslint-disable-next-line no-console
+    console.log('[cosmos] tick fn defined, about to call')
     const tick = () => {
-      const t = clock.getElapsedTime()
-      const dt = clock.getDelta()
-      const speedMul = (busyRef.current ? 2.4 : 1.0) * speedRef.current
+      try {
+        tickCount++
+        if (tickCount <= 3) {
+          // eslint-disable-next-line no-console
+          console.log('[cosmos] tick run #' + tickCount)
+        }
+        const dt = clock.getDelta()
+        const t = clock.elapsedTime
+        const speedMul = (busyRef.current ? 2.4 : 1.0) * speedRef.current
+        frameCount++
+        logAcc += dt
+        if (logAcc > 2) {
+          logAcc = 0
+          const p0 = planets[0]
+          // eslint-disable-next-line no-console
+          console.log('[cosmos] tick diag', {
+            fps: (frameCount / 2).toFixed(0),
+            speed: speedRef.current,
+            busy: busyRef.current,
+            speedMul,
+            dt: dt.toFixed(4),
+            planetsCount: planets.length,
+            firstPlanet: p0 ? { name: p0.name, phase: p0.phase.toFixed(3), x: p0.mesh.position.x.toFixed(2), z: p0.mesh.position.z.toFixed(2) } : null,
+            meteors: meteors.length,
+            rockets: rockets.length,
+            meteorT: meteorT.toFixed(2),
+            rocketT: rocketT.toFixed(2)
+          })
+          frameCount = 0
+        }
 
       starMat.uniforms.uTime.value = t
-      sunMat.uniforms.uTime.value = t
-      sun.rotation.y += 0.05 * dt * speedMul
+      sunShader.uniforms.uTime.value = t
       corona.scale.setScalar(22 + Math.sin(t * 1.2) * 0.6)
 
       planets.forEach(p => {
@@ -580,105 +658,81 @@ export default function CosmosScene({ busy, speed = 1 }) {
         kaxaMoon.rotation.y += 0.25 * dt * speedMul
       }
 
-      // ----- Galactus eats Earth -----
-      if (earthEntry) {
-        eatT += dt * speedMul / CYCLE_SEC
-        if (eatT > 1) eatT = 0
+      // ----- Sun = Galactus: menacing breathing pulse + light flicker -----
+      if (galactus) {
+        const pulse = 1 + Math.sin(t * 1.4) * 0.04
+        galactus.scale.setScalar(galactusBaseScale * pulse)
+      }
+      sunLight.intensity = 5.5 + Math.sin(t * 3.2) * 1.2
 
-        // Phases: 0-0.15 approach, 0.15-0.75 devour (shrink+pull), 0.75-0.9 burp, 0.9-1 reset/respawn
-        tmpEarthPos.copy(earthEntry.mesh.position)
+      // ----- Meteor/rocket spawn (raw dt so they keep spawning even when orbit paused) -----
+      meteorT += dt
+      if (meteorT > 1.1) { spawnMeteor(); meteorT = 0 }
+      rocketT += dt
+      if (rocketT > 2.2) { spawnRocket(); rocketT = 0 }
 
-        // Galactus position: orbits with Earth, offset on outer side
-        const ang = Math.atan2(tmpEarthPos.z, tmpEarthPos.x)
-        const outX = Math.cos(ang) * (earthEntry.d + 8)
-        const outZ = Math.sin(ang) * (earthEntry.d + 8)
-        galactusGroup.position.set(outX, galactusOffset.y, outZ)
-        // Face Earth
-        galactusGroup.lookAt(tmpEarthPos.x, galactusGroup.position.y, tmpEarthPos.z)
-
-        // Pulse Galactus (menacing breathing)
-        if (galactus) {
-          const pulse = 1 + Math.sin(t * 1.8) * 0.03
-          const eatPulse = eatT > 0.15 && eatT < 0.75 ? 1.08 + Math.sin(t * 6) * 0.04 : 1
-          galactus.scale.setScalar(galactusBaseScale * pulse * eatPulse)
-          galactus.rotation.y = -Math.PI / 2 + Math.sin(t * 0.6) * 0.05
+      const projDt = Math.max(speedMul, 0.5) * dt
+      const updateProjectile = (p, getStart, getEnd, arc) => {
+        p.progress += projDt * p.speed
+        const startPos = getStart()
+        const endPos = getEnd()
+        const tt = Math.min(p.progress, 1)
+        const pos = new THREE.Vector3().lerpVectors(startPos, endPos, tt)
+        if (arc > 0) pos.y += Math.sin(tt * Math.PI) * arc
+        p.head.position.copy(pos)
+        p.history.unshift(pos.clone())
+        if (p.history.length > TRAIL_LEN) p.history.pop()
+        for (let j = 0; j < TRAIL_LEN; j++) {
+          const h = p.history[j] || pos
+          p.posArr[j * 3] = h.x
+          p.posArr[j * 3 + 1] = h.y
+          p.posArr[j * 3 + 2] = h.z
+          const a = 1 - j / TRAIL_LEN
+          p.colArr[j * 3] = p.rgb[0] * a
+          p.colArr[j * 3 + 1] = p.rgb[1] * a
+          p.colArr[j * 3 + 2] = p.rgb[2] * a
         }
+        p.trail.geometry.attributes.position.needsUpdate = true
+        p.trail.geometry.attributes.color.needsUpdate = true
+        return p.progress >= 1 ? endPos.clone() : null
+      }
 
-        galactusLight.intensity = 2.0 + Math.sin(t * 4) * 0.6 + (eatT > 0.15 && eatT < 0.75 ? 2.0 : 0)
-
-        // Earth scale + pull
-        let earthScale = 1
-        let pullAmt = 0
-        let beamIntensity = 0
-        if (eatT < 0.15) {
-          earthScale = 1
-        } else if (eatT < 0.75) {
-          const k = (eatT - 0.15) / 0.6
-          earthScale = Math.max(0.001, 1 - k * 0.98)
-          pullAmt = k * 0.55
-          beamIntensity = Math.sin(k * Math.PI) * 1.2
-        } else if (eatT < 0.9) {
-          earthScale = 0.001 // swallowed
-          beamIntensity = 0
-        } else {
-          // respawn grow
-          const k = (eatT - 0.9) / 0.1
-          earthScale = k
+      for (let i = meteors.length - 1; i >= 0; i--) {
+        const m = meteors[i]
+        const impact = updateProjectile(m, () => m.from, () => m.target.mesh.position, 0)
+        if (impact) {
+          spawnExplosion(impact, 0xffa060, 32, 3.2)
+          disposeProjectile(m)
+          meteors.splice(i, 1)
         }
-        earthEntry.mesh.scale.setScalar(earthScale)
+      }
 
-        // Pull earth toward galactus mouth
-        if (pullAmt > 0) {
-          tmpMouthPos.copy(galactusGroup.position)
-          tmpMouthPos.y += 1.5 // approx mouth height
-          tmpDir.copy(tmpMouthPos).sub(tmpEarthPos).multiplyScalar(pullAmt)
-          earthEntry.mesh.position.add(tmpDir)
+      for (let i = rockets.length - 1; i >= 0; i--) {
+        const r = rockets[i]
+        const impact = updateProjectile(r, () => r.src.mesh.position, () => r.target.mesh.position, 4)
+        if (impact) {
+          spawnExplosion(impact, 0xb79cff, 40, 3.5)
+          disposeProjectile(r)
+          rockets.splice(i, 1)
         }
+      }
 
-        // Energy beam between mouth and Earth
-        if (beamIntensity > 0.05 && earthScale > 0.01) {
-          beam.visible = true
-          tmpMouthPos.copy(galactusGroup.position)
-          tmpMouthPos.y += 1.5
-          beam.position.copy(tmpMouthPos)
-          const distVec = new THREE.Vector3().copy(earthEntry.mesh.position).sub(tmpMouthPos)
-          const dist = distVec.length()
-          beam.scale.set(1, dist, 1)
-          beam.lookAt(earthEntry.mesh.position)
-          beam.rotateX(Math.PI / 2)
-          beamMat.uniforms.uTime.value = t
-          beamMat.uniforms.uIntensity.value = beamIntensity
-        } else {
-          beam.visible = false
+      for (let i = explosions.length - 1; i >= 0; i--) {
+        const e = explosions[i]
+        e.life += projDt
+        for (let j = 0; j < e.vel.length; j++) {
+          e.arr[j * 3] += e.vel[j].x * projDt
+          e.arr[j * 3 + 1] += e.vel[j].y * projDt
+          e.arr[j * 3 + 2] += e.vel[j].z * projDt
         }
-
-        // Debris — spawn from Earth surface, spiral into mouth
-        tmpMouthPos.copy(galactusGroup.position)
-        tmpMouthPos.y += 1.5
-        for (let i = 0; i < debrisCount; i++) {
-          debrisLife[i] += dt * debrisSpd[i] * speedMul * 0.5
-          if (debrisLife[i] > 1) debrisLife[i] -= 1
-          const life = debrisLife[i]
-          // spawn point near Earth surface
-          const a = debrisAng[i * 2] + t * 0.5
-          const b = debrisAng[i * 2 + 1]
-          const spawn = new THREE.Vector3(
-            tmpEarthPos.x + Math.cos(a) * Math.cos(b) * earthBaseRadius * earthScale * 1.15,
-            tmpEarthPos.y + Math.sin(b) * earthBaseRadius * earthScale * 1.15,
-            tmpEarthPos.z + Math.sin(a) * Math.cos(b) * earthBaseRadius * earthScale * 1.15
-          )
-          // interpolate to mouth with spiral
-          const p = spawn.lerp(tmpMouthPos, life)
-          const spiral = (1 - life) * 1.2
-          p.x += Math.cos(a * 3 + t * 2) * spiral
-          p.y += Math.sin(life * Math.PI * 2) * spiral * 0.4
-          p.z += Math.sin(a * 3 + t * 2) * spiral
-          debrisPos[i * 3] = p.x
-          debrisPos[i * 3 + 1] = p.y
-          debrisPos[i * 3 + 2] = p.z
+        e.pts.geometry.attributes.position.needsUpdate = true
+        e.pts.material.opacity = Math.max(0, 1 - e.life / e.max)
+        if (e.life >= e.max) {
+          scene.remove(e.pts)
+          e.pts.geometry.dispose()
+          e.pts.material.dispose()
+          explosions.splice(i, 1)
         }
-        debrisGeo.attributes.position.needsUpdate = true
-        debrisMat.opacity = (eatT > 0.1 && eatT < 0.85) ? 0.9 : 0.0
       }
 
       nebulae.forEach((n, i) => {
@@ -691,27 +745,36 @@ export default function CosmosScene({ busy, speed = 1 }) {
       camera.position.y = 35 + mouse.y * -4
       camera.lookAt(0, 0, 0)
 
+      sun.lookAt(camera.position)
+
       stars.rotation.y = t * 0.005
 
-      renderer.render(scene, camera)
-      raf = requestAnimationFrame(tick)
+        renderer.render(scene, camera)
+        raf = requestAnimationFrame(tick)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[cosmos] tick threw, raf halted:', err)
+      }
     }
     tick()
 
     return () => {
+      clearInterval(watchdog)
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', onResize)
       window.removeEventListener('mousemove', onMove)
       renderer.dispose()
       starGeo.dispose()
       starMat.dispose()
-      sunGeo.dispose()
-      sunMat.dispose()
+      sunShader.dispose()
       planets.forEach(p => { p.mesh.geometry.dispose(); p.mesh.material.dispose() })
-      debrisGeo.dispose()
-      debrisMat.dispose()
-      beamGeo.dispose()
-      beamMat.dispose()
+      meteors.forEach(disposeProjectile)
+      rockets.forEach(disposeProjectile)
+      explosions.forEach(e => {
+        scene.remove(e.pts)
+        e.pts.geometry.dispose()
+        e.pts.material.dispose()
+      })
       if (galactus) {
         galactus.traverse((obj) => {
           if (obj.isMesh) {

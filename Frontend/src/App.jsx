@@ -246,7 +246,7 @@ export default function App() {
               <b>SPEED</b>
               <input
                 type="range"
-                min="0"
+                min="0.1"
                 max="5"
                 step="0.1"
                 value={speed}
