@@ -56,9 +56,13 @@ body {
   z-index: 1;
   height: 100vh;
   display: grid;
-  grid-template-columns: 1fr 420px;
+  grid-template-columns: 420px 1fr;
   gap: 16px;
   padding: 20px;
+  transition: grid-template-columns 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.app.minimized {
+  grid-template-columns: 60px 1fr;
 }
 
 .stage {
@@ -192,6 +196,26 @@ body {
   gap: 10px;
   font-size: 14px;
   letter-spacing: 0.5px;
+}
+.app.minimized .panel-head .title { cursor: pointer; }
+
+.min-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.min-btn:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
 }
 
 .orb {

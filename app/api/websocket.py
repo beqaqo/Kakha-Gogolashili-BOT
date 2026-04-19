@@ -28,14 +28,18 @@ async def websocket_chat(websocket: WebSocket):
 
             logger.info(f"[session={session_id}] Question: {question}")
 
-            result = await get_rag_response(question)
-
-            await websocket.send_json({
-                "type": "answer",
-                "data": result["answer"],
-                "sources": result.get("sources", []),
-                "session_id": session_id,
-            })
+            try:
+                result = await get_rag_response(question, session_id=session_id)
+                
+                await websocket.send_json({
+                    "type": "answer",
+                    "data": result["answer"],
+                    "sources": result.get("sources", []),
+                    "session_id": session_id,
+                })
+            except Exception as e:
+                logger.error(f"RAG Error: {e}")
+                await websocket.send_json({"type": "error", "data": str(e)})
 
     except WebSocketDisconnect:
         logger.info("WebSocket connection closed by client")

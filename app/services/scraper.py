@@ -48,7 +48,7 @@ def scrape_article(article: tuple[str, str]):
     return {
         "category": category_name,
         "title": title,
-        "text": text,
+        "content": text,
     }
 
 if __name__ == "__main__":

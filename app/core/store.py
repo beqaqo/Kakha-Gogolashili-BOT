@@ -221,11 +221,23 @@ class ArticleEmbeddingStore:
         return metadata
 
 
-def build_context(results: Sequence[SearchResult]) -> str:
+def build_context(results: Sequence[SearchResult], max_chars: int = 3000) -> str:
     sections: list[str] = []
+    current_len = 0
     for result in results:
         title = result.metadata.get("title") or result.id
-        sections.append(f"Title: {title}\nContent: {result.content}")
+        block = f"Title: {title}\nContent: {result.content}"
+        
+        if current_len + len(block) > max_chars:
+            # If we have space for at least 200 chars, take a snippet
+            remaining = max_chars - current_len
+            if remaining > 200:
+                sections.append(block[:remaining] + "... [truncated]")
+            break
+            
+        sections.append(block)
+        current_len += len(block)
+        
     return "\n\n".join(sections)
 
 

@@ -22,12 +22,13 @@ const SESSION_ID = (() => {
   }
 })()
 
-const INTRO = `Greetings, traveler. I am KAXA GOGOLASHVILI — a signal from the edge of the observable net. Ask me anything about the cosmos, or anything else. Transmission opens when you send.`
+const INTRO = `მოგესალმებით, მოგზაურო. მე ვარ კახა გოგოლაშვილი — სიგნალი ხილული ქსელის კიდიდან. მკითხეთ ნებისმიერი რამ კოსმოსის ან სხვა რამის შესახებ. ტრანსმისია გააქტიურდება შეტყობინების გაგზავნისთანავე.`
 
 export default function App() {
   const [msgs, setMsgs] = useState([{ role: 'sys', body: INTRO }])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [minimized, setMinimized] = useState(false)
   const [linkState, setLinkState] = useState('connecting') // connecting | open | closed | error
   const [utc, setUtc] = useState(nowUtc())
   const [speed, setSpeed] = useState(1)
@@ -117,7 +118,7 @@ export default function App() {
         }
 
         if (kind === 'error') {
-          setMsgs(m => [...m, { role: 'err', body: `[error] ${body}`, ts: new Date() }])
+          setMsgs(m => [...m, { role: 'err', body: `[შეცდომა] ${body}`, ts: new Date() }])
         } else {
           setMsgs(m => {
             const last = m[m.length - 1]
@@ -126,7 +127,7 @@ export default function App() {
               next.push({ ...last, body: body || last.body, sources, streaming: false })
               return next
             }
-            return [...m, { role: 'bot', body: body || '[empty]', sources, ts: new Date() }]
+            return [...m, { role: 'bot', body: body || '[ცარიელია]', sources, ts: new Date() }]
           })
         }
 
@@ -146,7 +147,7 @@ export default function App() {
         if (cancelled) return
         setLinkState('closed')
         if (busyRef.current) {
-          setMsgs(m => [...m, { role: 'err', body: '[link closed before response]', ts: new Date() }])
+          setMsgs(m => [...m, { role: 'err', body: '[კავშირი გაწყდა პასუხამდე]', ts: new Date() }])
           setBusy(false)
         }
         scheduleRetry()
@@ -179,7 +180,7 @@ export default function App() {
     if (!prompt || busy) return
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      setMsgs(m => [...m, { role: 'err', body: '[uplink offline — reconnecting]', ts: new Date() }])
+      setMsgs(m => [...m, { role: 'err', body: '[კავშირი გათიშულია — ხელახალი დაკავშირება]', ts: new Date() }])
       return
     }
     setMsgs(m => [...m, { role: 'user', body: prompt, ts: new Date() }])
@@ -188,12 +189,12 @@ export default function App() {
     try {
       ws.send(JSON.stringify({ question: prompt, session_id: SESSION_ID }))
     } catch (e) {
-      setMsgs(m => [...m, { role: 'err', body: `[send failed] ${e.message}`, ts: new Date() }])
+      setMsgs(m => [...m, { role: 'err', body: `[გაგზავნა ვერ მოხერხდა] ${e.message}`, ts: new Date() }])
       setBusy(false)
       return
     }
     pendingRef.current = setTimeout(() => {
-      setMsgs(m => [...m, { role: 'err', body: '[timeout · no response in 30s]', ts: new Date() }])
+      setMsgs(m => [...m, { role: 'err', body: '[ტაიმაუტი · პასუხი არ მოვიდა 30 წამში]', ts: new Date() }])
       setBusy(false)
     }, 30000)
   }
@@ -206,17 +207,17 @@ export default function App() {
   }
 
   const label = r => ({
-    sys: '◌ transmission log',
-    user: '➤ you',
-    bot: '✦ kaxa',
-    err: '⚠ error'
+    sys: '◌ ტრანსმისიის ჟურნალი',
+    user: '➤ თქვენ',
+    bot: '✦ კახა',
+    err: '⚠ შეცდომა'
   }[r] || r)
 
   const linkLabel = {
-    connecting: 'establishing link…',
-    open: 'listening',
-    closed: 'link down · retrying',
-    error: 'link error · retrying'
+    connecting: 'კავშირის დამყარება…',
+    open: 'მოსმენა',
+    closed: 'ბმული გაწყდა · ცდა',
+    error: 'ბმულის შეცდომა · ცდა'
   }[linkState]
 
   const canSend = linkState === 'open' && !busy && !!input.trim()
@@ -225,25 +226,85 @@ export default function App() {
     <>
       <audio ref={audioRef} src="/music.mp3" loop autoPlay preload="auto" />
       <CosmosScene busy={busy} speed={speed} />
-      <div className="app">
+      <div className={`app ${minimized ? 'minimized' : ''}`}>
+        <aside className="panel">
+          <div className="panel-head">
+            <div className="title" onClick={() => minimized && setMinimized(false)}>
+              <span className="orb" />
+              <span>{minimized ? '' : 'კავშირის არხი'}</span>
+            </div>
+            <button className="min-btn" onClick={() => setMinimized(!minimized)}>
+              {minimized ? '✦' : '—'}
+            </button>
+          </div>
+
+          {!minimized && (
+            <>
+              <div className="chat" ref={chatRef}>
+                {msgs.map((m, i) => (
+                  <div key={i} className={`msg ${m.role}`}>
+                    <span className="meta">{label(m.role)}{m.ts ? ` · ${fmt(m.ts)}` : ''}</span>
+                    <div className="body">{m.body}</div>
+                    {Array.isArray(m.sources) && m.sources.length > 0 && (
+                      <div className="sources">
+                        {m.sources.map((s, j) => (
+                          <span className="src-chip" key={j}>{s}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {busy && (
+                  <div className="msg bot">
+                    <span className="meta">{label('bot')} · დეკოდირება</span>
+                    <div className="body"><span className="dots">სიგნალის მიღება</span></div>
+                  </div>
+                )}
+              </div>
+
+              <div className="input-row">
+                <div className="input-wrap">
+                  <span className="glyph">✦</span>
+                  <input
+                    ref={inputRef}
+                    className="prompt-input"
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={onKey}
+                    placeholder={linkState === 'open' ? 'ჰკითხეთ კოსმოსს…' : 'კავშირის მოლოდინში…'}
+                    disabled={busy}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
+                <button className="send" onClick={send} disabled={!canSend}>
+                  {busy ? 'გადაცემა…' : 'გაგზავნა ➤'}
+                </button>
+              </div>
+
+              <div className="foot">
+                <span className={linkState === 'open' ? (busy ? 'busy' : 'ok') : 'busy'}>
+                  ● {linkLabel}
+                </span>
+              </div>
+            </>
+          )}
+        </aside>
+
         <section className="stage">
           <div className="brand">
-            <span className="kicker">Cosmic AI · Deep Space Uplink</span>
-            <h1>KAXA<br/>GOGOLASHVILI</h1>
+            <span className="kicker">კოსმოსური AI</span>
+            <h1>კახა<br/>გოგოლაშვილი</h1>
             <p className="sub">
-              An astronomer's mind, rendered as signal. Orbit the sun at the center of this
-              view — each planet is a thought in motion. Ask a question and watch the
-              system accelerate while the response streams in over the open channel.
+              ასტრონომის გონება, სიგნალად ქცეული. დასვით კითხვა და მიიღეთ პასუხი ღია არხზე.
             </p>
           </div>
 
           <div className="telemetry">
-            <span className="tm"><b>UTC</b>{utc}</span>
-            <span className="tm"><b>ORBIT</b>{busy ? 'accelerated' : 'nominal'}</span>
-            <span className="tm"><b>CHANNEL</b>WS {WS_ENDPOINT}</span>
-            <span className="tm"><b>LINK</b>{linkLabel}</span>
+            <span className="tm"><b>{utc}</b></span>
+            <span className="tm"><b>ორბიტა:</b> {busy ? 'აჩქარებული' : 'ნომინალური'}</span>
             <span className="tm speed-ctl">
-              <b>SPEED</b>
+              <b>სიჩქარე:</b>
               <input
                 type="range"
                 min="0.1"
@@ -256,7 +317,7 @@ export default function App() {
               <span className="speed-val">{speed.toFixed(1)}×</span>
             </span>
             <span className="tm speed-ctl">
-              <b>VOL</b>
+              <b>ხმა:</b>
               <input
                 type="range"
                 min="0"
@@ -270,66 +331,6 @@ export default function App() {
             </span>
           </div>
         </section>
-
-        <aside className="panel">
-          <div className="panel-head">
-            <div className="title">
-              <span className="orb" />
-              <span>Uplink Channel</span>
-            </div>
-            <span className="sub">{msgs.filter(m => m.role !== 'sys').length} exchanges</span>
-          </div>
-
-          <div className="chat" ref={chatRef}>
-            {msgs.map((m, i) => (
-              <div key={i} className={`msg ${m.role}`}>
-                <span className="meta">{label(m.role)}{m.ts ? ` · ${fmt(m.ts)}` : ''}{m.code ? ` · ${m.code}` : ''}</span>
-                <div className="body">{m.body}</div>
-                {Array.isArray(m.sources) && m.sources.length > 0 && (
-                  <div className="sources">
-                    <span className="sources-label">sources</span>
-                    {m.sources.map((s, j) => (
-                      <span className="src-chip" key={j}>{s}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-            {busy && (
-              <div className="msg bot">
-                <span className="meta">{label('bot')} · decoding</span>
-                <div className="body"><span className="dots">receiving signal</span></div>
-              </div>
-            )}
-          </div>
-
-          <div className="input-row">
-            <div className="input-wrap">
-              <span className="glyph">✦</span>
-              <input
-                ref={inputRef}
-                className="prompt-input"
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={onKey}
-                placeholder={linkState === 'open' ? 'ask the cosmos…' : 'waiting for uplink…'}
-                disabled={busy}
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </div>
-            <button className="send" onClick={send} disabled={!canSend}>
-              {busy ? 'transmitting…' : 'transmit ➤'}
-            </button>
-          </div>
-
-          <div className="foot">
-            <span>WS {WS_ENDPOINT} · send {'{ question, session_id }'} → recv {'{ type, data, sources }'}</span>
-            <span className={linkState === 'open' ? (busy ? 'busy' : 'ok') : 'busy'}>
-              ● {linkLabel}
-            </span>
-          </div>
-        </aside>
       </div>
     </>
   )

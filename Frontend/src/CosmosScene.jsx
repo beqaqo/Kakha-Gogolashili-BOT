@@ -142,11 +142,11 @@ export default function CosmosScene({ busy, speed = 1 }) {
     }
 
     // ----- Sun = Galactus (shines from center) -----
-    const SUN_RADIUS = 6
+    const SUN_RADIUS = 12
     const sun = new THREE.Group()
     scene.add(sun)
 
-    const sunLight = new THREE.PointLight(0xff8a40, 6, 600, 1.2)
+    const sunLight = new THREE.PointLight(0xff8a40, 12, 1000, 1.2)
     scene.add(sunLight)
     scene.add(new THREE.AmbientLight(0x223055, 0.4))
 
@@ -192,13 +192,13 @@ export default function CosmosScene({ busy, speed = 1 }) {
           float n = fbm(p);
           float n2 = fbm(p * 2.1 + vec3(uTime * 0.9));
           float k = clamp(n * 0.6 + n2 * 0.5, 0.0, 1.0);
-          vec3 cold = vec3(0.85, 0.18, 0.02);
-          vec3 warm = vec3(1.0,  0.55, 0.12);
-          vec3 hot  = vec3(1.0,  0.95, 0.55);
+          vec3 cold = vec3(1.0,  0.3,  0.1);
+          vec3 warm = vec3(1.0,  0.7,  0.2);
+          vec3 hot  = vec3(1.0,  1.0,  0.8);
           vec3 col = mix(cold, warm, smoothstep(0.25, 0.65, k));
           col = mix(col, hot, smoothstep(0.65, 0.95, k));
           float rim = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 2.2);
-          col += rim * vec3(1.0, 0.5, 0.2);
+          col += rim * vec3(1.0, 0.8, 0.4);
           gl_FragColor = vec4(col, 1.0);
         }
       `
@@ -209,8 +209,8 @@ export default function CosmosScene({ busy, speed = 1 }) {
     coronaCanvas.width = coronaCanvas.height = 256
     const cctx = coronaCanvas.getContext('2d')
     const cg = cctx.createRadialGradient(128, 128, 20, 128, 128, 128)
-    cg.addColorStop(0, 'rgba(255,220,160,0.9)')
-    cg.addColorStop(0.3, 'rgba(255,160,80,0.4)')
+    cg.addColorStop(0, 'rgba(255,255,220,1.0)')
+    cg.addColorStop(0.3, 'rgba(255,200,100,0.6)')
     cg.addColorStop(1, 'rgba(255,100,50,0)')
     cctx.fillStyle = cg
     cctx.fillRect(0, 0, 256, 256)
@@ -220,7 +220,7 @@ export default function CosmosScene({ busy, speed = 1 }) {
       transparent: true,
       depthWrite: false
     }))
-    corona.scale.set(22, 22, 1)
+    corona.scale.set(45, 45, 1)
     scene.add(corona)
 
     // ----- Planets -----
@@ -293,11 +293,11 @@ export default function CosmosScene({ busy, speed = 1 }) {
     }
 
     const planetDefs = [
-      { name: 'Aphro',   r: 1.5, d: 14, spd: 0.6, base: '#8ec5ff', veins: [60, 100, 200], tilt: 0.1 },
-      { name: 'Kaxa',    r: 2.4, d: 24, spd: 0.35, base: '#3a6ee0', veins: [20, 50, 140], tilt: 0.2, ring: true },
-      { name: 'Earth',   r: 1.9, d: 34, spd: 0.22, earth: true, tilt: 0.41, moon: true },
-      { name: 'Ember',   d: 46, r: 3.0, spd: 0.14, base: '#ff9b6a', veins: [120, 40, 20], tilt: 0.12 },
-      { name: 'Frost',   d: 60, r: 1.2, spd: 0.09, base: '#d4e6ff', veins: [80, 120, 200], tilt: 0.25 }
+      { name: 'Aphro',   r: 1.5, d: 55, spd: 0.6, base: '#8ec5ff', veins: [60, 100, 200], tilt: 0.1 },
+      { name: 'Kaxa',    r: 2.4, d: 85, spd: 0.35, base: '#3a6ee0', veins: [20, 50, 140], tilt: 0.2, ring: true },
+      { name: 'Earth',   r: 1.9, d: 115, spd: 0.22, earth: true, tilt: 0.41, moon: true },
+      { name: 'Ember',   d: 150, r: 3.0, spd: 0.14, base: '#ff9b6a', veins: [120, 40, 20], tilt: 0.12 },
+      { name: 'Frost',   d: 190, r: 1.2, spd: 0.09, base: '#d4e6ff', veins: [80, 120, 200], tilt: 0.25 }
     ]
 
     const textureLoader = new THREE.TextureLoader()
@@ -481,6 +481,7 @@ export default function CosmosScene({ busy, speed = 1 }) {
             obj.material = sunShader
           }
         })
+        galactus.position.set(0, 0, 0)
         galactus.rotation.y = -Math.PI / 2
         sun.add(galactus)
         // eslint-disable-next-line no-console
@@ -663,8 +664,88 @@ export default function CosmosScene({ busy, speed = 1 }) {
       explosions.push({ pts, arr, vel, life: 0, max: 0.7 })
     }
 
+    // ----- Focus Marker (Arrows) -----
+    const focusMarker = new THREE.Group()
+    scene.add(focusMarker)
+    for (let i = 0; i < 4; i++) {
+      const arrowGeo = new THREE.ConeGeometry(0.3, 0.8, 4)
+      const arrowMat = new THREE.MeshBasicMaterial({ color: 0x8ec5ff, transparent: true, opacity: 0.8 })
+      const arrow = new THREE.Mesh(arrowGeo, arrowMat)
+      const angle = (i * Math.PI) / 2
+      arrow.position.set(Math.cos(angle) * 4, 0, Math.sin(angle) * 4)
+      arrow.rotation.x = Math.PI / 2
+      arrow.rotation.z = angle + Math.PI / 2
+      focusMarker.add(arrow)
+    }
+    focusMarker.visible = false
+
     let meteorT = 0
     let rocketT = 0
+
+    // ----- Interaction (Zoom & Raycasting & Rotate) -----
+    const raycaster = new THREE.Raycaster()
+    const mouseCoords = new THREE.Vector2()
+    const targetFocus = new THREE.Vector3(0, 0, 0)
+    let zoomLevel = 1.0
+    let focusObject = null
+    
+    // User Rotation state
+    let isDragging = false
+    let prevMousePos = { x: 0, y: 0 }
+    let userRotation = { x: 0, y: 0.3 } // start with some angle
+    let lastUserInteractTime = 0
+
+    const onWheel = (e) => {
+      const delta = e.deltaY * 0.001
+      zoomLevel = Math.min(Math.max(zoomLevel + delta, 0.5), 3.0)
+      lastUserInteractTime = performance.now()
+    }
+    window.addEventListener('wheel', onWheel)
+
+    const onMouseDown = (e) => {
+      isDragging = true
+      prevMousePos = { x: e.clientX, y: e.clientY }
+      lastUserInteractTime = performance.now()
+    }
+    const onMouseUp = () => { isDragging = false }
+    const onPointerMove = (e) => {
+      // Parallax update
+      mouse.tx = (e.clientX / window.innerWidth - 0.5) * 2
+      mouse.ty = (e.clientY / window.innerHeight - 0.5) * 2
+
+      if (!isDragging) return
+      const dx = e.clientX - prevMousePos.x
+      const dy = e.clientY - prevMousePos.y
+      userRotation.x += dx * 0.005
+      userRotation.y = Math.min(Math.max(userRotation.y + dy * 0.005, -Math.PI/2.1), Math.PI/2.1)
+      prevMousePos = { x: e.clientX, y: e.clientY }
+      lastUserInteractTime = performance.now()
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) focusObject = null
+    }
+
+    const onClick = (e) => {
+      mouseCoords.x = (e.clientX / window.innerWidth) * 2 - 1
+      mouseCoords.y = -(e.clientY / window.innerHeight) * 2 + 1
+      raycaster.setFromCamera(mouseCoords, camera)
+      
+      const targetMeshes = planets.map(p => p.mesh).concat([sun])
+      const intersects = raycaster.intersectObjects(targetMeshes, true)
+      
+      if (intersects.length > 0) {
+        let obj = intersects[0].object
+        while (obj.parent && !targetMeshes.includes(obj)) {
+          obj = obj.parent
+        }
+        focusObject = obj
+        lastUserInteractTime = performance.now()
+      } else {
+        focusObject = null
+      }
+    }
+    window.addEventListener('mousedown', onMouseDown)
+    window.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('mousemove', onPointerMove)
+    window.addEventListener('click', onClick)
 
     // ----- Resize -----
     const onResize = () => {
@@ -749,7 +830,7 @@ export default function CosmosScene({ busy, speed = 1 }) {
         const pulse = 1 + Math.sin(t * 1.4) * 0.04
         galactus.scale.setScalar(galactusBaseScale * pulse)
       }
-      sunLight.intensity = 5.5 + Math.sin(t * 3.2) * 1.2
+      sunLight.intensity = 15.0 + Math.sin(t * 3.2) * 5.0
 
       // ----- Meteor/rocket spawn (raw dt so they keep spawning even when orbit paused) -----
       meteorT += dt
@@ -876,18 +957,68 @@ export default function CosmosScene({ busy, speed = 1 }) {
         n.material.rotation += 0.0002 * (i + 1)
       })
 
-      mouse.x += (mouse.tx - mouse.x) * 0.03
-      mouse.y += (mouse.ty - mouse.y) * 0.03
-      camera.position.x = mouse.x * 8
-      camera.position.y = 35 + mouse.y * -4
-      camera.lookAt(0, 0, 0)
+      // ----- Camera Cinema Mode & Interaction -----
+      mouse.x += (mouse.tx - mouse.x) * 0.05
+      mouse.y += (mouse.ty - mouse.y) * 0.05
+      
+      const currentTime = performance.now()
+      const isCinematic = busyRef.current && (currentTime - lastUserInteractTime > 6000)
+      const idealPos = new THREE.Vector3()
+      const idealLook = new THREE.Vector3()
+
+      if (focusObject) {
+         // Focus on planet or sun with active orbit
+         const worldPos = new THREE.Vector3()
+         focusObject.getWorldPosition(worldPos)
+         idealLook.copy(worldPos)
+         
+         let r = 8 
+         const pData = planets.find(p => p.mesh === focusObject)
+         if (pData) r = pData.r * 5
+
+         // Smoothly orbit around the focused object
+         const orbitDist = r * 2.5
+         const orbitSpeed = 0.4
+         const ox = Math.cos(t * orbitSpeed) * orbitDist
+         const oz = Math.sin(t * orbitSpeed) * orbitDist
+         idealPos.set(worldPos.x + ox, worldPos.y + r * 0.5, worldPos.z + oz)
+         
+         // Update and show marker
+         focusMarker.visible = true
+         focusMarker.position.lerp(worldPos, 0.2)
+         focusMarker.rotation.y += 0.02
+         const s = 1 + Math.sin(t * 5) * 0.1
+         focusMarker.scale.set(s, s, s)
+      } else {
+         focusMarker.visible = false
+         
+         if (isCinematic) {
+            // Robotic Cinematic orbit when busy and no recent user input
+            const orbitR = 120 + Math.sin(t * 0.5) * 30
+            idealPos.set(Math.cos(t * 0.2) * orbitR, 40 + Math.sin(t * 0.3) * 20, Math.sin(t * 0.2) * orbitR)
+            idealLook.set(0, 0, 0)
+         } else {
+            // Manual state with drag rotation & zoom & parallax
+            const dist = 95 * zoomLevel
+            const lx = Math.sin(userRotation.x) * Math.cos(userRotation.y) * dist
+            const ly = Math.sin(userRotation.y) * dist + 35 + mouse.y * -10
+            const lz = Math.cos(userRotation.x) * Math.cos(userRotation.y) * dist
+            idealPos.set(lx + mouse.x * 20, ly, lz)
+            idealLook.set(0, 0, 0)
+         }
+      }
+
+      // Smooth camera transition
+      camera.position.lerp(idealPos, 0.06)
+      targetFocus.lerp(idealLook, 0.06)
+      camera.lookAt(targetFocus)
 
       sun.lookAt(camera.position)
 
       stars.rotation.y = t * 0.005
 
-        renderer.render(scene, camera)
-        raf = requestAnimationFrame(tick)
+      renderer.render(scene, camera)
+      raf = requestAnimationFrame(tick)
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error('[cosmos] tick threw, raf halted:', err)
@@ -899,7 +1030,11 @@ export default function CosmosScene({ busy, speed = 1 }) {
       clearInterval(watchdog)
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', onResize)
-      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mousemove', onPointerMove)
+      window.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('mouseup', onMouseUp)
+      window.removeEventListener('wheel', onWheel)
+      window.removeEventListener('click', onClick)
       renderer.dispose()
       starGeo.dispose()
       starMat.dispose()
