@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(curl -sSL -o public/kaxa.jpg \"http://astronet.ge/wp-content/uploads/2019/11/kaxa.jpg\")",
+      "Bash(file public/kaxa.jpg)",
+      "Bash(mkdir -p \"C:/Users/user/Desktop/Projects/DAVITAAAAAAAAAAAAAAAAAAAA/KaxaGogolashviliAI/public/models\")",
+      "Bash(curl -L -o \"C:/Users/user/Desktop/Projects/DAVITAAAAAAAAAAAAAAAAAAAA/KaxaGogolashviliAI/public/models/galactus.glb\" \"https://tripo-data.rg1.data.tripo3d.com/tripo-studio/20260419/b7fce031-46e1-4d02-84cd-ec94e2f1d194/tripo_model_b7fce031-46e1-4d02-84cd-ec94e2f1d194_meshopt.glb?Key-Pair-Id=K1676C64NMVM2J&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly90cmlwby1kYXRhLnJnMS5kYXRhLnRyaXBvM2QuY29tL3RyaXBvLXN0dWRpby8yMDI2MDQxOS9iN2ZjZTAzMS00NmUxLTRkMDItODRjZC1lYzk0ZTJmMWQxOTQvdHJpcG9fbW9kZWxfYjdmY2UwMzEtNDZlMS00ZDAyLTg0Y2QtZWM5NGUyZjFkMTk0X21lc2hvcHQuZ2xiIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoxNzc2NjQzMjAwfX19XX0_&Signature=jDYoxc1G6bHE2ngscqhYchNHXlLk4yvbWVKoT2Pu12r8mT1Ov7Wx-42~irbg3E5nbC56f6MlMka4xsHgXu4muaPco1fGDHLKvacz9riNwWir7h1qE1bkPFliycLzk5EoIc3b3qE6XY76dHWSxNFryUNFohgZrpQ9daMZevQz2uT64IuDeF8A~pLNSHbssU4y7PH-LqoyCsxQm1VjZsqmAqluDHCkd0SpIG8ksx-COdWIfWmfN-Y4BX7eNZbSdkZMvvP5AQLXgK~cWl9RW1LPQnXLHXWsm5bJZvxT~c00YBD-y9ucbU6aG2XERzfZqIHhDSVgj6gQ2-Xyd-wZ7ohYwQ__\" -H \"referer: https://studio.tripo3d.ai/\" -H \"origin: https://studio.tripo3d.ai\" -H \"user-agent: Mozilla/5.0\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{size_download}\\\\n\" http://localhost:5174/models/galactus.glb)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5174/src/CosmosScene.jsx)"
+    ]
+  }
+}
